@@ -26,7 +26,7 @@ t.create('version (live, second example)')
 
 t.create('version (not found)')
   .get('/dotnet/Rx.NET/RxNet/v/not-a-real-package.json')
-  .expectBadge({ label: 'RxNet', message: 'package not found' })
+  .expectBadge({ label: 'azure artifacts', message: 'package not found' })
 
 t.create('version (mocked response)')
   .get('/dotnet/Rx.NET/RxNet/v/System.Reactive.json')
@@ -48,7 +48,7 @@ t.create('version (mocked response)')
         data: [
           {
             id: 'System.Reactive',
-            versions: [{ version: '6.0.0' }, { version: '7.1.0-preview.1' }],
+            versions: [{ version: '7.1.0-preview.1' }, { version: '6.0.0' }],
           },
         ],
       }),

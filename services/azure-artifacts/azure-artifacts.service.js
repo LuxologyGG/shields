@@ -8,13 +8,10 @@
  */
 
 import Joi from 'joi'
+import { getCachedResource } from '../../core/base-service/resource-cache.js'
 import { BaseJsonService, NotFound, pathParams } from '../index.js'
 import { renderVersionBadge } from '../version.js'
-import {
-  searchServiceUrl,
-  stripBuildMetadata,
-  selectVersion,
-} from '../nuget/nuget-helpers.js'
+import { stripBuildMetadata, selectVersion } from '../nuget/nuget-helpers.js'
 
 const schema = Joi.object({
   data: Joi.array()
@@ -33,6 +30,18 @@ const schema = Joi.object({
     .default([]),
 }).required()
 
+async function azureSearchServiceUrl(baseUrl) {
+  const searchQueryServices = await getCachedResource({
+    url: `${baseUrl}/index.json`,
+    ttl: 42 * 60 * 1000,
+    scraper: json =>
+      json.resources.filter(resource =>
+        resource['@type'].startsWith('SearchQueryService'),
+      ),
+  })
+  return searchQueryServices[0]['@id']
+}
+
 export default class AzureArtifacts extends BaseJsonService {
   static category = 'version'
 
@@ -42,26 +51,27 @@ export default class AzureArtifacts extends BaseJsonService {
   }
 
   static openApi = {
-    '/azure-artifacts/{organization}/{project}/{feed}/{variant}/{packageName}': {
-      get: {
-        summary: 'Azure Artifacts NuGet Version',
-        description:
-          'Returns the latest stable or prerelease version of a package from a public Azure Artifacts NuGet feed.',
-        parameters: pathParams(
-          { name: 'organization', example: 'dotnet' },
-          { name: 'project', example: 'Rx.NET' },
-          { name: 'feed', example: 'RxNet' },
-          {
-            name: 'variant',
-            example: 'v',
-            schema: { type: 'variant', enum: ['v', 'vpre'] },
-            description:
-              'Latest stable version (`v`) or latest version including prereleases (`vpre`).',
-          },
-          { name: 'packageName', example: 'System.Reactive' },
-        ),
+    '/azure-artifacts/{organization}/{project}/{feed}/{variant}/{packageName}':
+      {
+        get: {
+          summary: 'Azure Artifacts NuGet Version',
+          description:
+            'Returns the latest stable or prerelease version of a package from a public Azure Artifacts NuGet feed.',
+          parameters: pathParams(
+            { name: 'organization', example: 'dotnet' },
+            { name: 'project', example: 'Rx.NET' },
+            { name: 'feed', example: 'RxNet' },
+            {
+              name: 'variant',
+              example: 'v',
+              schema: { type: 'variant', enum: ['v', 'vpre'] },
+              description:
+                'Latest stable version (`v`) or latest version including prereleases (`vpre`).',
+            },
+            { name: 'packageName', example: 'System.Reactive' },
+          ),
+        },
       },
-    },
   }
 
   static defaultBadgeData = {
@@ -81,7 +91,7 @@ export default class AzureArtifacts extends BaseJsonService {
   async fetch({ baseUrl, packageName }) {
     return this._requestJson({
       schema,
-      url: await searchServiceUrl(baseUrl, 'SearchQueryService'),
+      url: await azureSearchServiceUrl(baseUrl),
       options: {
         searchParams: {
           q: packageName,
@@ -97,9 +107,9 @@ export default class AzureArtifacts extends BaseJsonService {
       item => item.id.toLowerCase() === packageName.toLowerCase(),
     )
     if (packageInfo && packageInfo.versions.length > 0) {
-      const versions = packageInfo.versions.map(item =>
-        stripBuildMetadata(item.version),
-      )
+      const versions = packageInfo.versions
+        .map(item => stripBuildMetadata(item.version))
+        .reverse()
       return selectVersion(versions, includePrereleases)
     }
     throw new NotFound({ prettyMessage: 'package not found' })
